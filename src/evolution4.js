@@ -87,7 +87,7 @@ const init = () => {
     audio = new THREE.Audio(listener);
 
     const audioLoader = new THREE.AudioLoader();
-    audioLoader.load('./Evolution v3.wav', (buffer) => {
+    audioLoader.load('src/Evolution v3.wav', (buffer) => {
         audio.setBuffer(buffer);
         audio.setLoop(true);
         audio.setVolume(0.5);
