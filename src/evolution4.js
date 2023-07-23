@@ -1,7 +1,7 @@
 //import * as THREE from 'three';
 //import { EffectComposer, RenderPass, UnrealBloomPass } from 'postprocessing';
 
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.151.3/build/three.module.js';
+import * as THREE from 'https://threejs.org/build/three.module.js';
 
 let scene, camera, renderer, analyser, dataArray, audio, ground, car;
 let buildings = [];
@@ -87,7 +87,7 @@ const init = () => {
     audio = new THREE.Audio(listener);
 
     const audioLoader = new THREE.AudioLoader();
-    audioLoader.load('src/Evolution v3.wav', (buffer) => {
+    audioLoader.load('BassTrip.wav', (buffer) => {
         audio.setBuffer(buffer);
         audio.setLoop(true);
         audio.setVolume(0.5);
