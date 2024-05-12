@@ -29,7 +29,7 @@ var stars;
 
 // Controls
 let currentSong = '';
-var songName = 'Dirty.wav'
+var songName = 'Held Back Low Quality.mp3'
 
 // Dirty
 const numLasers = 8;
