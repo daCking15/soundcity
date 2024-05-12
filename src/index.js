@@ -393,14 +393,6 @@ async function initPlaceholder() {
 
 function initHomeScreen() {
     // Set up the home screen elements like the song selection buttons
-    const playUpButton = document.getElementById('playUp');
-    playUpButton.addEventListener('click', function() {
-        initPlaceholder().then(() => {
-            playSong('Up.wav');
-            hideElement('songButtons');
-            showElement('canvasContainer');
-        });
-    });
 
     const playDirtyButton = document.getElementById('playDirty');
     playDirtyButton.addEventListener('click', function() {
@@ -415,87 +407,6 @@ function initHomeScreen() {
     playSunGoesDownButton.addEventListener('click', function() {
         initPlaceholder().then(() => {
             playSong('Sun Goes Down.wav');
-            hideElement('songButtons');
-            showElement('canvasContainer');
-        });
-    });
-
-    const playBringItButton = document.getElementById('playBringIt');
-    playBringItButton.addEventListener('click', function() {
-        initPlaceholder().then(() => {
-            playSong('Bring It.wav');
-            hideElement('songButtons');
-            showElement('canvasContainer');
-        });
-    });
-
-    const playWarButton = document.getElementById('playWar');
-    playWarButton.addEventListener('click', function() {
-        initPlaceholder().then(() => {
-            playSong('War.wav');
-            hideElement('songButtons');
-            showElement('canvasContainer');
-        });
-    });
-
-    const playLegendButton = document.getElementById('playLegend');
-    playLegendButton.addEventListener('click', function() {
-        initPlaceholder().then(() => {
-            playSong('Legend.wav');
-            hideElement('songButtons');
-            showElement('canvasContainer');
-        });
-    });
-
-    const playMyTimeButton = document.getElementById('playMyTime');
-    playMyTimeButton.addEventListener('click', function() {
-        initPlaceholder().then(() => {
-            playSong('My Time.wav');
-            hideElement('songButtons');
-            showElement('canvasContainer');
-        });
-    });
-
-    const playNoRestartsButton = document.getElementById('playNoRestarts');
-    playNoRestartsButton.addEventListener('click', function() {
-        initPlaceholder().then(() => {
-            playSong('No Restarts.wav');
-            hideElement('songButtons');
-            showElement('canvasContainer');
-        });
-    });
-
-    const playCantChangeButton = document.getElementById('playCantChange');
-    playCantChangeButton.addEventListener('click', function() {
-        initPlaceholder().then(() => {
-            playSong("Can't Change.wav");
-            hideElement('songButtons');
-            showElement('canvasContainer');
-        });
-    });
-
-    const playBurtonX8Button = document.getElementById('playBurtonX8');
-    playBurtonX8Button.addEventListener('click', function() {
-        initPlaceholder().then(() => {
-            playSong('Burton x8.wav');
-            hideElement('songButtons');
-            showElement('canvasContainer');
-        });
-    });
-
-    const playTurretButton = document.getElementById('playTurret');
-    playTurretButton.addEventListener('click', function() {
-        initPlaceholder().then(() => {
-            playSong('Turret.wav');
-            hideElement('songButtons');
-            showElement('canvasContainer');
-        });
-    });
-
-    const playNextGearButton = document.getElementById('playNextGear');
-    playNextGearButton.addEventListener('click', function() {
-        initPlaceholder().then(() => {
-            playSong('Next Gear.wav');
             hideElement('songButtons');
             showElement('canvasContainer');
         });
