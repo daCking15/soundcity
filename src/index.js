@@ -29,6 +29,7 @@ var stars;
 
 // Controls
 let currentSong = '';
+var songName = 'Dirty.wav'
 
 // Dirty
 const numLasers = 8;
@@ -38,7 +39,10 @@ const laserColors = [0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0xFF00FF, 0x00FFFF,
 const minFrequency = 0;
 const maxFrequency = 10000;
 
-async function initDirty() {
+var versionNumber;
+
+async function initV2() {
+    versionNumber = 2;
     // Setup the scene asynchronously
     await new Promise((resolve, reject) => {
         scene = new THREE.Scene();
@@ -218,7 +222,8 @@ async function initDirty() {
 
 }
 
-async function initPlaceholder() {
+async function initV1() {
+    versionNumber = 1;
     // Setup the scene asynchronously
     await new Promise((resolve, reject) => {
         scene = new THREE.Scene();
@@ -392,21 +397,20 @@ async function initPlaceholder() {
 }
 
 function initHomeScreen() {
-    // Set up the home screen elements like the song selection buttons
-
-    const playDirtyButton = document.getElementById('playDirty');
-    playDirtyButton.addEventListener('click', function() {
-        initDirty().then(() => {
-            playSong('Dirty.wav');
+    
+    const playV1 = document.getElementById('playV1');
+    playV1.addEventListener('click', function() {
+        initV1().then(() => {
+            playSong(songName);
             hideElement('songButtons');
             showElement('canvasContainer');
         });
     });
-
-    const playSunGoesDownButton = document.getElementById('playSunGoesDown');
-    playSunGoesDownButton.addEventListener('click', function() {
-        initPlaceholder().then(() => {
-            playSong('Sun Goes Down.wav');
+    
+    const playV2 = document.getElementById('playV2');
+    playV2.addEventListener('click', function() {
+        initV2().then(() => {
+            playSong(songName);
             hideElement('songButtons');
             showElement('canvasContainer');
         });
@@ -446,39 +450,16 @@ function goBackToMainScreen() {
 
 function toggleSong() {
     audio.stop();
-    const songs = [
-        'Up.wav', 
-        'Dirty.wav', 
-        "Sun Goes Down.wav", 
-        "Bring it.wav", 
-        "War.wav", 
-        "Legend.wav", 
-        "My Time.wav", 
-        "No Restarts.wav", 
-        "Can't Change.wav", 
-        "Burton x8.wav", 
-        "Turret.wav", 
-        "Next Gear.wav"
-    ];
-
-    // Find the index of the current song in the array
-    const currentIndex = songs.indexOf(currentSong);
-
-    // Calculate the index of the next song
-    const nextIndex = (currentIndex + 1) % songs.length;
-
-    // Get the filename of the next song
-    const nextSong = songs[nextIndex];
 
     destroyScene().then(() => {
-        if (nextSong === 'Dirty.wav') {
-            initDirty().then(() => {
-                playSong(nextSong);
+        if (versionNumber == 1) {
+            initV2().then(() => {
+                playSong(songName);
                 document.getElementById('canvasContainer').style.display = 'block';
             });
         } else {
-            initPlaceholder().then(() => {
-                playSong(nextSong);
+            initV1().then(() => {
+                playSong(songName);
                 document.getElementById('canvasContainer').style.display = 'block';
             });
         }       
@@ -552,10 +533,10 @@ function playSong(filename) {
         audio.play();
 
         // Start the Three.js animation if the song is "Dirty.wav"
-        if (filename === 'Dirty.wav') {
-            animateDirty();
+        if (versionNumber == 2) {
+            animateV2();
         } else {
-            animatePlaceholder();
+            animateV1();
         }
     });
 
@@ -565,8 +546,8 @@ function playSong(filename) {
 }
 
 
-function animateDirty() {
-    requestAnimationFrame(animateDirty);
+function animateV2() {
+    requestAnimationFrame(animateV2);
 
     dataArray = analyser.getFrequencyData();
     const frequency = analyser.getAverageFrequency();
@@ -667,8 +648,8 @@ function animateDirty() {
     renderer.render(scene, camera);
 };
 
-function animatePlaceholder() {
-    requestAnimationFrame(animatePlaceholder);
+function animateV1() {
+    requestAnimationFrame(animateV1);
 
     dataArray = analyser.getFrequencyData();
     const frequency = analyser.getAverageFrequency();
