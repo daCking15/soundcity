@@ -1,0 +1,66 @@
+body {
+    margin: 0;
+    overflow: hidden; /* Prevents scrolling */
+    position: relative; /* For absolute positioning of child elements */
+    height: 100vh;
+    background-color: mediumpurple;
+}
+
+#songButtons {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 100; /* Ensure it's above the canvas */
+}
+
+.songButton {
+    margin: 10px;
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+
+.songButton img {
+    width: 150px; /* Adjust as needed */
+    height: auto;
+    display: block;
+    margin-bottom: 5px;
+}
+
+.songButton span {
+    color: white;
+    text-align: center;
+}
+
+#canvasContainer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1; /* Below the song buttons */
+    display: none;
+}
+
+#backButton {
+    position: absolute;
+    top: 20px; /* Adjust as necessary */
+    left: 20px; /* Adjust as necessary */
+    z-index: 100; /* Above canvas */
+    padding: 10px;
+    cursor: pointer;
+    color: white;
+    background-color: #444; /* Adjust color as necessary */
+    border: none;
+}
+
+#homeContainer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+#titleContainer {
+    margin-bottom: 10px; /* Adjust as needed */
+}
