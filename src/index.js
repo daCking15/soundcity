@@ -1,441 +1,277 @@
-//import * as THREE from 'three';
-//import { EffectComposer, RenderPass, UnrealBloomPass } from 'postprocessing';
-
 import * as THREE from 'https://threejsfundamentals.org/threejs/resources/threejs/r127/build/three.module.js';
-import {OrbitControls} from 'https://threejsfundamentals.org/threejs/resources/threejs/r127/examples/jsm/controls/OrbitControls.js';
-import {GLTFLoader} from 'https://threejsfundamentals.org/threejs/resources/threejs/r127/examples/jsm/loaders/GLTFLoader.js';
-import {GUI} from 'https://threejsfundamentals.org/threejs/../3rdparty/dat.gui.module.js';
+import { OrbitControls } from 'https://threejsfundamentals.org/threejs/resources/threejs/r127/examples/jsm/controls/OrbitControls.js';
+import { GLTFLoader } from 'https://threejsfundamentals.org/threejs/resources/threejs/r127/examples/jsm/loaders/GLTFLoader.js';
+import { GUI } from 'https://threejsfundamentals.org/threejs/../3rdparty/dat.gui.module.js';
 
-let scene, camera, renderer, analyser, dataArray, audio, ground, car;
-let buildings = [];
-let buildingColors = [];
-const roadWidth = 10;
-const roadLength = 200;
-let buildingGroup = new THREE.Object3D();
-const carVelocity = new THREE.Vector3();
-const groundRaycaster = new THREE.Raycaster();
-const clock = new THREE.Clock();
-const carSpeed = 25;
-const turnAmount = Math.PI / 4;
-const turnProbability = 0.1;
-const speedFactor = 100;
-let road;
-const carForward = new THREE.Vector3();
-const cameraOffset = new THREE.Vector3();
-const cameraLookAt = new THREE.Vector3();
-const maxHeight = 50;
-let moonLight, moonGlow;
-var stars;
+var ambientLight,
+    analyser,
+    audio,
+    backButton,
+    camera,
+    canvasContainer,
+    car,
+    dataArray,
+    frequency,
+    ground,
+    listener,
+    loader,
+    play,
+    pointLight,
+    renderer,
+    road,
+    roadGeometry,
+    roadMaterial,
+    scene,
+    stars;
 
-// Controls
-let currentSong = '';
-var songName = 'Held Back Low Quality.mp3'
+var cameraOffset = new THREE.Vector3();
+var cameraLookAt = new THREE.Vector3();
+var carForward = new THREE.Vector3();
+var carSpeed = 25;
+var carVelocity = new THREE.Vector3();
+var clock = new THREE.Clock();
+var currentSong = '';
+var geometry;
+var groundRaycaster = new THREE.Raycaster();
+var laserColors = [];
+var laserGroup = new THREE.Object3D();
+var laserLength = 10000;
+var laserOffset = 20;
+var lasers = [];
+var laserWidth = 0.1;
+var maxFrequency = 10000;
+var maxLaserHeight = 50;
+var minFrequency = 0;
+var roadLength = 300;
+var roadWidth = 10;
+var songName = 'How I Should of Been.wav';
+var spaceBetweenLasers = 5;
+var speedFactor = 100;
+var traveledDistance = 0;
+var turnAmount = Math.PI / 4;
+var turnProbability = 0.1;
 
-// Dirty
-const numLasers = 8;
-const lasers = [];
-const laserColors = [0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0xFF00FF, 0x00FFFF, 0xFFFFFF, 0xFF8000];
+var lasersPerSide = Math.floor(roadLength / (laserWidth + spaceBetweenLasers));
+var numLasers = lasersPerSide * 2;
 
-const minFrequency = 0;
-const maxFrequency = 10000;
+async function init() {
+    return new Promise((resolve, reject) => {
+        try {
+            ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+            geometry = new THREE.BoxGeometry(1, 1, 1);
+            listener = new THREE.AudioListener();
+            audio = new THREE.Audio(listener);
+            loader = new GLTFLoader();
+            pointLight = new THREE.PointLight(0xffffff, 1, 100);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            roadMaterial = new THREE.MeshStandardMaterial({ color: 0xfffff, transparent: true, opacity: 0.1 });
+            scene = new THREE.Scene();
+            stars = new THREE.Group();
 
-var versionNumber;
+            analyser = new THREE.AudioAnalyser(audio, 64);
+            roadGeometry = new THREE.PlaneGeometry(roadWidth, roadLength);
 
-async function initV2() {
-    versionNumber = 2;
-    // Setup the scene asynchronously
-    await new Promise((resolve, reject) => {
-        scene = new THREE.Scene();
-        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 0, 5);
-        renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setClearColor(0x000000);
-        renderer.useLegacyLights = true;
-        document.body.appendChild(renderer.domElement);
+            dataArray = new Uint8Array(analyser.frequencyBinCount);
+            road = new THREE.Mesh(roadGeometry, roadMaterial);
 
-        const geometry = new THREE.BoxGeometry(1, 1, 1);
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            canvasContainer = document.getElementById('canvasContainer');
 
-        const buildingWidth = 0.1;
-        const buildingOffset = 20; // The distance between the road and the buildings
-        const spaceBetweenBuildings = 5; // The space between buildings
-        const buildingsPerSide = Math.floor(roadLength / (buildingWidth + spaceBetweenBuildings));
-        const numBuildings = buildingsPerSide * 2;
-
-        for (let i = 0; i < numBuildings; i++) {
-            const color = new THREE.Color().setHSL(i / numBuildings, 1, 0.5);
-            const material = new THREE.MeshPhongMaterial({ color: color, emissive: color, emissiveIntensity: 1.0 });
-            const building = new THREE.Mesh(geometry, material);
-
-            let buildingPosition = new THREE.Vector3();
-            let side = i % 2 === 0 ? -1 : 1; // Alternate the side of the road
-            buildingPosition.x = side * (roadWidth / 2 + buildingOffset);
-            buildingPosition.z = ((i % buildingsPerSide) * (buildingWidth + spaceBetweenBuildings)) - roadLength / 2;
-
-            const height = Math.random() * maxHeight + 1;
-            building.scale.set(buildingWidth, height, buildingWidth);
-            building.position.copy(buildingPosition);
-            building.position.y = height / 2;
-
-            // Randomly rotate the building around the x-axis
-            const rotationAngle = Math.random() * Math.PI * 2;
-            building.rotateX(rotationAngle);
-
-            // Adjust the position after rotation to keep one edge at the same position
-            const halfHeight = height / 2;
-            const newPosition = new THREE.Vector3(building.position.x, building.position.y - halfHeight, building.position.z);
-            building.position.copy(newPosition);
-
-            buildingGroup.add(building);
-            buildings.push(building);
-            buildingColors.push(new THREE.Color());
-        }
-
-
-        scene.add(buildingGroup);
-        camera.position.y = 5;
-
-        // Create a ground plane
-        const groundGeometry = new THREE.PlaneGeometry(200, 200);
-        const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
-        ground = new THREE.Mesh(groundGeometry, groundMaterial);
-        ground.rotation.x = -Math.PI / 2; // Rotate the ground plane to make it horizontal
-        ground.receiveShadow = true; // Enable the ground to receive shadows from buildings and lights
-        scene.add(ground);
-
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
-        scene.add(ambientLight);
-
-        let pointLight = new THREE.PointLight(0xffffff, 1, 100);
-        pointLight.position.set(0, 20, 0);
-        scene.add(pointLight);
-
-        const listener = new THREE.AudioListener();
-        camera.add(listener);
-
-        audio = new THREE.Audio(listener);
-
-        const canvasContainer = document.getElementById('canvasContainer');
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        canvasContainer.appendChild(renderer.domElement);
-
-        // Optional: If you have a resize event handler, ensure it's adjusting the canvas correctly
-        window.addEventListener('resize', onWindowResize, false);
-
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
-        }
+            renderer.setClearColor(0x000000);
+            renderer.useLegacyLights = true;
+            document.body.appendChild(renderer.domElement);
 
-        analyser = new THREE.AudioAnalyser(audio, 64);
-        dataArray = new Uint8Array(analyser.frequencyBinCount);
+            for (let i = 0; i < numLasers; i++) {
+                var laserPosition = new THREE.Vector3();
+                var laserHeight = Math.random() * maxLaserHeight + 1;
+                var laserColor = new THREE.Color().setHSL(i / numLasers, 1, 0.5);
+                var laserMaterial = new THREE.MeshPhongMaterial({ color: laserColor, emissive: laserColor, emissiveIntensity: 1.0 });
+                var side = i % 2 === 0 ? -1 : 1;
+                var rotationAngle = Math.random() * Math.PI * 2;
 
-        // Create a road plane
-        const roadGeometry = new THREE.PlaneGeometry(roadWidth, roadLength);
-        const roadMaterial = new THREE.MeshStandardMaterial({ color: 0x404040 }); // Dark gray color for the road
-        road = new THREE.Mesh(roadGeometry, roadMaterial);
-        road.rotation.x = -Math.PI / 2; // Rotate the road plane to make it horizontal
-        road.position.y = 0.01; // Raise the road slightly above the ground
-        scene.add(road);
+                var laser = new THREE.Mesh(geometry, laserMaterial);
+                var halfHeight = laserHeight / 2;
+                laserPosition.x = side * (roadWidth / 2 + laserOffset);
+                laserPosition.z = ((i % lasersPerSide) * (laserWidth + spaceBetweenLasers)) - roadLength / 2;
+                laser.position.copy(laserPosition);
+                laser.position.y = laserHeight / 2;
+                var newPosition = new THREE.Vector3(laser.position.x, laser.position.y - halfHeight, laser.position.z);
+                laser.position.copy(newPosition);
 
-        // Create a moon light
-        const moonColor = 0xffffff;
-        const moonIntensity = 1;
-        moonLight = new THREE.PointLight(moonColor, moonIntensity);
+                
+                laser.scale.set(laserWidth, laserHeight, laserWidth);
+                laser.rotateX(rotationAngle);
 
-        moonLight.position.set(0, 50, roadLength / 2);
-        moonLight.castShadow = true;
-        moonLight.shadow.mapSize.width = 2048;
-        moonLight.shadow.mapSize.height = 2048;
-        moonLight.shadow.camera.near = 0.1;
-        moonLight.shadow.camera.far = 1000;
-        moonLight.shadow.camera.fov = 90;
-        moonLight.shadow.bias = -0.001;
-        moonLight.distance = 100;
-        moonLight.shadow.radius = 5;
-        scene.add(moonLight);
+                lasers.push(laser);
+                laserColors.push(laserColor);
 
-        // Set the moon light color and intensity
-        const moonGlowColor = 0xaaaaaa;
-        const moonGlowIntensity = 1;
-        moonLight.color.setHex(moonColor);
-        moonLight.intensity = moonIntensity;
-
-        // Add a glowing sphere to represent the moon
-        const moonGlowGeometry = new THREE.SphereGeometry(10, 32, 32);
-        const moonGlowMaterial = new THREE.MeshBasicMaterial({ color: moonGlowColor, transparent: true, opacity: moonGlowIntensity });
-        moonGlow = new THREE.Mesh(moonGlowGeometry, moonGlowMaterial);
-        moonGlow.position.set(0, 50, roadLength / 2);
-        scene.add(moonGlow);
-
-        // Load car model asynchronously
-        const loader = new GLTFLoader();
-        loader.load(
-            // resource URL
-            "car.glb",
-            // called when the resource is loaded
-            function (gltf) {
-                car = gltf.scene;
-                car.children[0].rotation.z = Math.PI;
-                scene.add(car);
-                resolve(); // Resolve the promise when the car model is loaded
-            },
-            // called while loading is progressing
-            function (xhr) {
-                console.log((xhr.loaded / xhr.total * 100) + '% loaded');
-            },
-            // called when loading has errors
-            function (error) {
-                console.log('An error happened', error);
-                reject(error); // Reject the promise if there is an error loading the car model
-            }
-        );
-
-        // Create a group to hold the stars
-        stars = new THREE.Group();
-
-        // Create the stars
-        for (let i = 0; i < 1000; i++) {
-            let starGeometry = new THREE.SphereGeometry(1, 8, 8);
-            let starMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
-            let star = new THREE.Mesh(starGeometry, starMaterial);
-
-            // Position the star randomly within a larger cube
-            star.position.x = Math.random() * 2000 - 1000;
-            star.position.z = Math.random() * 2000 - 1000;
-
-            // If the star is within a certain distance of the plane, set a minimum height
-            if (Math.abs(star.position.z) < 200) {  // Adjust this value as needed
-                star.position.y = Math.random() * 500 + 500; // Stars will be created at altitudes between 500 and 1000
-            } else {
-                star.position.y = Math.random() * 1000;
+                laserGroup.add(laser);
             }
 
-            // Add the star to the group
-            stars.add(star);
-        }
+            for (let i = 0; i < 1000; i++) {
+                let starGeometry = new THREE.SphereGeometry(1, 8, 8);
+                let starMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
 
-        // Add the group of stars to the scene
-        scene.add(stars);
-    });
+                let star = new THREE.Mesh(starGeometry, starMaterial);
 
-}
+                star.position.x = Math.random() * 2000 - 1000;
+                star.position.z = Math.random() * 2000 - 1000;
+                if (Math.abs(star.position.z) < 200) {
+                    star.position.y = Math.random() * 500 + 500;
+                } else {
+                    star.position.y = Math.random() * 1000;
+                }
 
-async function initV1() {
-    versionNumber = 1;
-    // Setup the scene asynchronously
-    await new Promise((resolve, reject) => {
-        scene = new THREE.Scene();
-        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 0, 5);
-        renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setClearColor(0x000000);
-        renderer.useLegacyLights = true;
-        document.body.appendChild(renderer.domElement);
+                stars.add(star);
+            }
 
-        const geometry = new THREE.BoxGeometry(1, 1, 1);
-
-        const buildingWidth = 5;
-        const buildingOffset = 20; // The distance between the road and the buildings
-        const spaceBetweenBuildings = 10; // The space between buildings
-        const buildingsPerSide = Math.floor(roadLength / (buildingWidth + spaceBetweenBuildings));
-        const numBuildings = buildingsPerSide * 2;
-
-        for (let i = 0; i < numBuildings; i++) {
-            const color = new THREE.Color().setHSL(i / numBuildings, 1, 0.5);
-            const material = new THREE.MeshPhongMaterial({ color: color, emissive: color, emissiveIntensity: 1.0 });
-            const building = new THREE.Mesh(geometry, material);
-
-            let buildingPosition = new THREE.Vector3();
-            let side = i % 2 === 0 ? -1 : 1; // Alternate the side of the road
-            buildingPosition.x = side * (roadWidth / 2 + buildingOffset);
-            buildingPosition.z = ((i % buildingsPerSide) * (buildingWidth + spaceBetweenBuildings)) - roadLength / 2;
-
-            const height = Math.random() * maxHeight + 1;
-            building.scale.set(buildingWidth, height, buildingWidth);
-            building.position.copy(buildingPosition);
-            building.position.y = height / 2;
-
-            building.scale.set(buildingWidth, (Math.random() * 5 + 1) * 10, buildingWidth);
-            building.position.copy(buildingPosition);
-            building.position.y = building.scale.y / 2;
-            buildingGroup.add(building);
-            buildings.push(building);
-            buildingColors.push(new THREE.Color());
-        }
-
-        scene.add(buildingGroup);
-        camera.position.y = 5;
-
-        // Create a ground plane
-        const groundGeometry = new THREE.PlaneGeometry(200, 200);
-        const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
-        ground = new THREE.Mesh(groundGeometry, groundMaterial);
-        ground.rotation.x = -Math.PI / 2; // Rotate the ground plane to make it horizontal
-        ground.receiveShadow = true; // Enable the ground to receive shadows from buildings and lights
-        scene.add(ground);
-
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
-        scene.add(ambientLight);
-
-        let pointLight = new THREE.PointLight(0xffffff, 1, 100);
-        pointLight.position.set(0, 20, 0);
-        scene.add(pointLight);
-
-        const listener = new THREE.AudioListener();
-        camera.add(listener);
-
-        audio = new THREE.Audio(listener);
-
-        const canvasContainer = document.getElementById('canvasContainer');
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        canvasContainer.appendChild(renderer.domElement);
-
-        // Optional: If you have a resize event handler, ensure it's adjusting the canvas correctly
-        window.addEventListener('resize', onWindowResize, false);
-
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
+            canvasContainer.appendChild(renderer.domElement);
+            window.addEventListener('resize', onWindowResize, false);
+
+            camera.add(listener);
+
+            scene.add(ambientLight);
+            scene.add(pointLight);
+            scene.add(laserGroup);
+            scene.add(road);
+            scene.add(stars);
+
+            loader.load(
+                "car.glb",
+                function (gltf) {
+                    car = gltf.scene;
+                    car.children[0].rotation.z = Math.PI;
+                    scene.add(car);
+                    car.position.z = road.position.z - roadLength / 2;
+                    carForward.multiplyScalar(-1);
+                    carVelocity.copy(carForward).multiplyScalar(carSpeed);
+                    resolve();
+                },
+                function (xhr) {
+                    console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+                },
+                function (error) {
+                    console.log('An error happened', error);
+                    reject(error);
+                }
+            );
+
+            camera.position.set(0, 0, 5);
+            camera.position.y = 5;
+            pointLight.position.set(0, 20, 0);
+            road.position.y = 0.01;
+            road.rotation.x = -Math.PI / 2;
+        } catch (error) {
+            console.error("Initialization error:", error);
+            reject(error);
+        }
+    });
+}
+
+function animate() {
+    var timeDelta = clock.getDelta();
+    var displacement;
+
+    requestAnimationFrame(animate);
+    traveledDistance += carVelocity.length() * clock.getDelta();
+    if (traveledDistance >= 275) {
+        traveledDistance = 0;
+        laserGroup.visible = !laserGroup.visible;
+    }
+    dataArray = analyser.getFrequencyData();
+    frequency = analyser.getAverageFrequency();
+
+    for (let i = 0; i < lasers.length; i++) {
+        const frequencyIndex = i / lasers.length * (maxFrequency - minFrequency) + minFrequency;
+        const index = Math.floor(frequencyIndex / (maxFrequency - minFrequency) * dataArray.length);
+        const normalizedFrequency = dataArray[index] / 256;
+        const rotationX = normalizedFrequency * Math.PI;
+
+        if (rotationX == 0) {
+            lasers[i].visible = false;
+        } else {
+            lasers[i].visible = true;
+            lasers[i].rotation.x = rotationX;
         }
 
-        analyser = new THREE.AudioAnalyser(audio, 64);
-        dataArray = new Uint8Array(analyser.frequencyBinCount);
+        lasers[i].scale.set(0.1, 0.1, laserLength);
+        var color = new THREE.Color().setHSL(normalizedFrequency, 1, 0.5);
+        laserColors[i] = color; // Correctly assign color
+        lasers[i].material.color.copy(laserColors[i]);
+        lasers[i].material.emissive.copy(laserColors[i]);
+        lasers[i].position.y = 0;
+    }
 
-        // Create a road plane
-        const roadGeometry = new THREE.PlaneGeometry(roadWidth, roadLength);
-        const roadMaterial = new THREE.MeshStandardMaterial({ color: 0x404040 }); // Dark gray color for the road
-        road = new THREE.Mesh(roadGeometry, roadMaterial);
-        road.rotation.x = -Math.PI / 2; // Rotate the road plane to make it horizontal
-        road.position.y = 0.01; // Raise the road slightly above the ground
-        scene.add(road);
-
-        // Create a moon light
-        const moonColor = 0xffffff;
-        const moonIntensity = 1;
-        moonLight = new THREE.PointLight(moonColor, moonIntensity);
-
-        moonLight.position.set(0, 50, roadLength / 2);
-        moonLight.castShadow = true;
-        moonLight.shadow.mapSize.width = 2048;
-        moonLight.shadow.mapSize.height = 2048;
-        moonLight.shadow.camera.near = 0.1;
-        moonLight.shadow.camera.far = 1000;
-        moonLight.shadow.camera.fov = 90;
-        moonLight.shadow.bias = -0.001;
-        moonLight.distance = 100;
-        moonLight.shadow.radius = 5;
-        scene.add(moonLight);
-
-        // Set the moon light color and intensity
-        const moonGlowColor = 0xaaaaaa;
-        const moonGlowIntensity = 1;
-        moonLight.color.setHex(moonColor);
-        moonLight.intensity = moonIntensity;
-
-        // Add a glowing sphere to represent the moon
-        const moonGlowGeometry = new THREE.SphereGeometry(10, 32, 32);
-        const moonGlowMaterial = new THREE.MeshBasicMaterial({ color: moonGlowColor, transparent: true, opacity: moonGlowIntensity });
-        moonGlow = new THREE.Mesh(moonGlowGeometry, moonGlowMaterial);
-        moonGlow.position.set(0, 50, roadLength / 2);
-        scene.add(moonGlow);
-
-        // Load car model asynchronously
-        const loader = new GLTFLoader();
-        loader.load(
-            // resource URL
-            "car.glb",
-            // called when the resource is loaded
-            function (gltf) {
-                car = gltf.scene;
-                car.children[0].rotation.z = Math.PI;
-                scene.add(car);
-                resolve(); // Resolve the promise when the car model is loaded
-            },
-            // called while loading is progressing
-            function (xhr) {
-                console.log((xhr.loaded / xhr.total * 100) + '% loaded');
-            },
-            // called when loading has errors
-            function (error) {
-                console.log('An error happened', error);
-                reject(error); // Reject the promise if there is an error loading the car model
-            }
+    for (let i = 0; i < stars.children.length; i++) {
+        const star = stars.children[i];
+        const index = Math.floor(i / stars.children.length * dataArray.length);
+        const normalizedFrequency = dataArray[index] / 256;
+        const color = new THREE.Color(
+            normalizedFrequency * 0x0000ff + (1 - normalizedFrequency) * 0xffffff
         );
+        star.material.color.copy(color);
+    }
 
-        // Create a group to hold the stars
-        stars = new THREE.Group();
+    car.getWorldDirection(carForward);
+    carVelocity.copy(carForward).multiplyScalar(carSpeed);
+    carVelocity.z = -carSpeed;
 
-        // Create the stars
-        for (let i = 0; i < 1000; i++) {
-            let starGeometry = new THREE.SphereGeometry(1, 8, 8);
-            let starMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
-            let star = new THREE.Mesh(starGeometry, starMaterial);
+    if (car.position.z < road.position.z - roadLength / 2) {
+        car.position.z = road.position.z + roadLength / 2;
+        carForward.multiplyScalar(-1);
+        carVelocity.copy(carForward).multiplyScalar(carSpeed);
+    } else if (car.position.z > road.position.z + roadLength / 2) {
+        car.position.z = road.position.z - roadLength / 2;
+        carForward.multiplyScalar(-1);
+        carVelocity.copy(carForward).multiplyScalar(carSpeed);
+    }
 
-            // Position the star randomly within a larger cube
-            star.position.x = Math.random() * 2000 - 1000;
-            star.position.z = Math.random() * 2000 - 1000;
+    displacement = carVelocity.clone().multiplyScalar(timeDelta);
+    car.position.add(displacement);
+    car.position.x = road.position.x;
+    car.position.y = Math.max(car.position.y, 1);
+    car.getWorldDirection(carForward);
+    carForward.negate();
+    cameraOffset.copy(carForward).multiplyScalar(-10);
+    camera.position.copy(car.position).add(cameraOffset);
+    cameraLookAt.copy(car.position).add(carForward);
+    camera.position.z -= 1.5;
+    camera.position.y += 1;
+    camera.rotation.y = car.rotation.y + Math.PI;
+    const cameraLookUpOffset = 5;
+    cameraLookAt.y += cameraLookUpOffset;
+    camera.lookAt(cameraLookAt);
 
-            // If the star is within a certain distance of the plane, set a minimum height
-            if (Math.abs(star.position.z) < 200) {  // Adjust this value as needed
-                star.position.y = Math.random() * 500 + 500; // Stars will be created at altitudes between 500 and 1000
+    renderer.render(scene, camera);
+}
+
+async function destroyScene() {
+    laserGroup.remove.apply(laserGroup, laserGroup.children);
+    await Promise.all(laserGroup.children.map(async (laser) => {
+        if (laser.geometry) { laser.geometry.dispose(); }
+        if (laser.material) {
+            if (Array.isArray(laser.material)) {
+                await Promise.all(laser.material.map(async (material) => {
+                    material.dispose();
+                    if (material.map) { material.map.dispose(); }
+                }));
             } else {
-                star.position.y = Math.random() * 1000;
+                laser.material.dispose();
+                if (laser.material.map) { laser.material.map.dispose(); }
             }
-
-            // Add the star to the group
-            stars.add(star);
         }
-
-        // Add the group of stars to the scene
-        scene.add(stars);
-    });
-
+    }));
+    scene.remove.apply(scene, scene.children.filter(child => child instanceof THREE.Light || child instanceof THREE.Camera));
+    lasers = [];
+    laserColors = [];
+    const canvasContainer = document.getElementById('canvasContainer');
+    if (canvasContainer && canvasContainer.firstChild) {
+        canvasContainer.removeChild(canvasContainer.firstChild);
+    }
+    renderer.dispose();
 }
-
-function initHomeScreen() {
-    
-    const playV1 = document.getElementById('playV1');
-    playV1.addEventListener('click', function() {
-        initV1().then(() => {
-            playSong(songName);
-            hideElement('songButtons');
-            showElement('canvasContainer');
-        });
-    });
-    
-    const playV2 = document.getElementById('playV2');
-    playV2.addEventListener('click', function() {
-        initV2().then(() => {
-            playSong(songName);
-            hideElement('songButtons');
-            showElement('canvasContainer');
-        });
-    });
-
-    const backButton = document.getElementById('backButton');
-    backButton.addEventListener('click', goBackToMainScreen);
-    
-    window.addEventListener('keydown', function(event) {
-        // Check if the key pressed is the spacebar
-        if (event.code === 'Space') {
-            event.preventDefault(); // Prevent any default behavior of the spacebar
-            toggleSong(); // Call the function to toggle the song
-        }
-    });   
-}
-
-function hideElement(id) {
-    document.getElementById(id).style.display = 'none';
-}
-
-function showElement(id) {
-    document.getElementById(id).style.display = 'block';
-}
-
 
 function goBackToMainScreen() {
     destroyScene().then(() => {
@@ -448,294 +284,49 @@ function goBackToMainScreen() {
     });
 }
 
-function toggleSong() {
-    audio.stop();
+function hideElement(id) { document.getElementById(id).style.display = 'none'; }
 
-    destroyScene().then(() => {
-        if (versionNumber == 1) {
-            initV2().then(() => {
-                playSong(songName);
-                document.getElementById('canvasContainer').style.display = 'block';
-            });
-        } else {
-            initV1().then(() => {
-                playSong(songName);
-                document.getElementById('canvasContainer').style.display = 'block';
-            });
-        }       
+function initHomeScreen() {
+    play = document.getElementById('play');
+    backButton = document.getElementById('backButton');
+
+    play.addEventListener('click', function () {
+        init().then(() => {
+            playSong(songName);
+            hideElement('songButtons');
+            showElement('canvasContainer');
+        }).catch(error => {
+            console.error("Error during initialization:", error);
+        });
     });
+    backButton.addEventListener('click', goBackToMainScreen);
 }
 
-
-async function destroyScene() {
-    // Remove all objects from the buildingGroup
-    buildingGroup.remove.apply(buildingGroup, buildingGroup.children);
-
-    // Dispose geometries and materials asynchronously to free up memory
-    await Promise.all(buildingGroup.children.map(async (building) => {
-        if (building.geometry) {
-            building.geometry.dispose();
-        }
-        if (building.material) {
-            // If the material is an array, dispose each material in the array
-            if (Array.isArray(building.material)) {
-                await Promise.all(building.material.map(async (material) => {
-                    material.dispose();
-                    // Dispose textures if applicable
-                    if (material.map) {
-                        material.map.dispose();
-                    }
-                }));
-            } else {
-                building.material.dispose();
-                // Dispose textures if applicable
-                if (building.material.map) {
-                    building.material.map.dispose();
-                }
-            }
-        }
-    }));
-
-    // Remove lights and cameras
-    scene.remove.apply(scene, scene.children.filter(child => child instanceof THREE.Light || child instanceof THREE.Camera));
-
-    // Reset any global variables or arrays
-    buildings = [];
-    buildingColors = [];
-
-    // Remove the renderer's canvas element
-    const canvasContainer = document.getElementById('canvasContainer');
-    if (canvasContainer && canvasContainer.firstChild) {
-        canvasContainer.removeChild(canvasContainer.firstChild);
-    }
-
-    // Optionally, dispose of the renderer
-    renderer.dispose();
+function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
 }
-
 
 function playSong(filename) {
     const audioLoader = new THREE.AudioLoader();
-    // Update the current song
     currentSong = filename;
-
-    // Your playSong function logic...
     audioLoader.load(filename, (buffer) => {
-        // If there's a song already playing, stop it
-        if (audio.isPlaying) {
-            audio.stop();
-        }
-
-        // Set the buffer and play the audio
+        if (audio.isPlaying) { audio.stop(); }
         audio.setBuffer(buffer);
         audio.setLoop(true);
         audio.setVolume(0.5);
         audio.play();
-
-        // Start the Three.js animation if the song is "Dirty.wav"
-        if (versionNumber == 2) {
-            animateV2();
-        } else {
-            animateV1();
-        }
+        animate();
+    }, undefined, (error) => {
+        console.error("Error loading audio file:", error);
     });
-
-    // Hide the song selection buttons
     document.getElementById('songButtons').style.display = 'none';
     document.getElementById('backButton').style.display = 'block';
 }
 
+function showElement(id) { document.getElementById(id).style.display = 'block'; }
 
-function animateV2() {
-    requestAnimationFrame(animateV2);
-
-    dataArray = analyser.getFrequencyData();
-    const frequency = analyser.getAverageFrequency();
-
-    const buildingLength = 10000; // Set a fixed length for the buildings
-
-    for (let i = 0; i < buildings.length; i++) {
-        const frequencyIndex = i / buildings.length * (maxFrequency - minFrequency) + minFrequency;
-        const index = Math.floor(frequencyIndex / (maxFrequency - minFrequency) * dataArray.length);
-        const normalizedFrequency = dataArray[index] / 256;
-
-        // Rotate the building around the x-axis based on the normalized frequency
-        const rotationX = normalizedFrequency * Math.PI; // Adjust the factor to control rotation
-        if (rotationX == 0) {
-            buildings[i].visible = false;
-        } else {
-            buildings[i].visible = true;
-            buildings[i].rotation.x = rotationX;
-        }
-
-        // Set a fixed length for the building
-        buildings[i].scale.set(0.1, 0.1, buildingLength);
-
-        const color = new THREE.Color().setHSL(normalizedFrequency, 1, 0.5);
-        buildingColors[i].copy(color);
-        buildings[i].material.color.copy(buildingColors[i]);
-        buildings[i].material.emissive.copy(buildingColors[i]);
-
-        // Position the buildings vertically to ensure they touch the ground
-        buildings[i].position.y = 0;
-    }
-    
-    for (let i = 0; i < stars.children.length; i++) {
-        const star = stars.children[i];
-        const index = Math.floor(i / stars.children.length * dataArray.length);
-        const normalizedFrequency = dataArray[index] / 256;
-        const color = new THREE.Color(
-            normalizedFrequency * 0x0000ff + (1 - normalizedFrequency) * 0xffffff
-        );
-        star.material.color.copy(color);
-    }
-
-    const timeDelta = clock.getDelta();
-    car.getWorldDirection(carForward);
-    carVelocity.copy(carForward).multiplyScalar(carSpeed);
-    carVelocity.z = -carSpeed;
-
-    const intersects = groundRaycaster.intersectObject(ground);
-
-    if (intersects.length > 0) {
-        if (Math.random() < turnProbability) {
-            carVelocity.applyAxisAngle(new THREE.Vector3(0, 1, 0), turnAmount * (Math.random() < 0.5 ? -1 : 1));
-        }
-    }
-
-    if (car.position.z < road.position.z - roadLength / 2) {
-        car.position.z = road.position.z + roadLength / 2;
-        carForward.multiplyScalar(-1);
-        carVelocity.copy(carForward).multiplyScalar(carSpeed);
-    } else if (car.position.z > road.position.z + roadLength / 2) {
-        car.position.z = road.position.z - roadLength / 2;
-        carForward.multiplyScalar(-1);
-        carVelocity.copy(carForward).multiplyScalar(carSpeed);
-    }
-
-    const displacement = carVelocity.clone().multiplyScalar(timeDelta);
-    car.position.add(displacement);
-
-    car.position.x = road.position.x
-    car.position.y = Math.max(car.position.y, 1);
-
-    car.getWorldDirection(carForward);
-    carForward.negate();
-    cameraOffset.copy(carForward).multiplyScalar(-10);
-    camera.position.copy(car.position).add(cameraOffset);
-    cameraLookAt.copy(car.position).add(carForward);
-    camera.position.z -= 1.5;
-    camera.position.y += 1;
-
-    camera.rotation.y = car.rotation.y + Math.PI;
-    
-    // Raise the Y-coordinate of cameraLookAt to angle the camera up slightly
-    const cameraLookUpOffset = 5; // Adjust this value to control the angle
-    cameraLookAt.y += cameraLookUpOffset;
-    
-    camera.lookAt(cameraLookAt);
-
-    // Position the moon ahead of the car
-    const moonDistance = 100;
-    const moonPosition = new THREE.Vector3().copy(car.position).addScaledVector(carForward, moonDistance);
-    moonPosition.setY(50);
-    moonLight.position.copy(moonPosition);
-    moonGlow.position.copy(moonPosition);
-    
-    // Update the bloom pass
-    //composer.render();
-    
-    renderer.render(scene, camera);
-};
-
-function animateV1() {
-    requestAnimationFrame(animateV1);
-
-    dataArray = analyser.getFrequencyData();
-    const frequency = analyser.getAverageFrequency();
-
-    for (let i = 0; i < buildings.length; i++) {
-        const frequencyIndex = i / buildings.length * (maxFrequency - minFrequency) + minFrequency;
-        const index = Math.floor(frequencyIndex / (maxFrequency - minFrequency) * dataArray.length);
-        const normalizedFrequency = dataArray[index] / 256;
-        const color = new THREE.Color().setHSL(normalizedFrequency, 1, 0.5);
-        buildingColors[i].copy(color);
-        buildings[i].material.color.copy(buildingColors[i]);
-        buildings[i].material.emissive.copy(buildingColors[i]);
-
-        const height = Math.max(normalizedFrequency * (frequency / 10) * maxHeight, 1);
-        buildings[i].scale.setY(height);
-        buildings[i].position.setY(height / 2);
-    }
-
-    for (let i = 0; i < stars.children.length; i++) {
-        const star = stars.children[i];
-        const index = Math.floor(i / stars.children.length * dataArray.length);
-        const normalizedFrequency = dataArray[index] / 256;
-        const color = new THREE.Color(
-            normalizedFrequency * 0x0000ff + (1 - normalizedFrequency) * 0xffffff
-        );
-        star.material.color.copy(color);
-    }
-
-    const timeDelta = clock.getDelta();
-    car.getWorldDirection(carForward);
-    carVelocity.copy(carForward).multiplyScalar(carSpeed);
-    carVelocity.z = -carSpeed;
-
-    const intersects = groundRaycaster.intersectObject(ground);
-
-    if (intersects.length > 0) {
-        if (Math.random() < turnProbability) {
-            carVelocity.applyAxisAngle(new THREE.Vector3(0, 1, 0), turnAmount * (Math.random() < 0.5 ? -1 : 1));
-        }
-    }
-
-    if (car.position.z < road.position.z - roadLength / 2) {
-        car.position.z = road.position.z + roadLength / 2;
-        carForward.multiplyScalar(-1);
-        carVelocity.copy(carForward).multiplyScalar(carSpeed);
-    } else if (car.position.z > road.position.z + roadLength / 2) {
-        car.position.z = road.position.z - roadLength / 2;
-        carForward.multiplyScalar(-1);
-        carVelocity.copy(carForward).multiplyScalar(carSpeed);
-    }
-
-    const displacement = carVelocity.clone().multiplyScalar(timeDelta);
-    car.position.add(displacement);
-
-    car.position.x = road.position.x
-    car.position.y = Math.max(car.position.y, 1);
-
-    car.getWorldDirection(carForward);
-    carForward.negate();
-    cameraOffset.copy(carForward).multiplyScalar(-10);
-    camera.position.copy(car.position).add(cameraOffset);
-    cameraLookAt.copy(car.position).add(carForward);
-    camera.position.z -= 1.5;
-    camera.position.y += 1;
-
-    camera.rotation.y = car.rotation.y + Math.PI;
-    
-    // Raise the Y-coordinate of cameraLookAt to angle the camera up slightly
-    const cameraLookUpOffset = 5; // Adjust this value to control the angle
-    cameraLookAt.y += cameraLookUpOffset;
-    
-    camera.lookAt(cameraLookAt);
-
-    // Position the moon ahead of the car
-    const moonDistance = 100;
-    const moonPosition = new THREE.Vector3().copy(car.position).addScaledVector(carForward, moonDistance);
-    moonPosition.setY(50);
-    moonLight.position.copy(moonPosition);
-    moonGlow.position.copy(moonPosition);
-    
-    // Update the bloom pass
-    //composer.render();
-    
-    renderer.render(scene, camera);
-};
-
-
-initHomeScreen();
-
+document.addEventListener('DOMContentLoaded', (event) => {
+    initHomeScreen();
+});
