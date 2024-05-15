@@ -3,8 +3,7 @@ import { OrbitControls } from 'https://threejsfundamentals.org/threejs/resources
 import { GLTFLoader } from 'https://threejsfundamentals.org/threejs/resources/threejs/r127/examples/jsm/loaders/GLTFLoader.js';
 import { GUI } from 'https://threejsfundamentals.org/threejs/../3rdparty/dat.gui.module.js';
 
-var ambientLight,
-    analyser,
+var analyser,
     audio,
     backButton,
     camera,
@@ -16,7 +15,6 @@ var ambientLight,
     listener,
     loader,
     play,
-    pointLight,
     renderer,
     road,
     roadGeometry,
@@ -51,21 +49,37 @@ var traveledDistance = 0;
 var turnAmount = Math.PI / 4;
 var turnProbability = 0.1;
 
+var stayOnRoad = true;
+var nitrus = false;
+
 var lasersPerSide = Math.floor(roadLength / (laserWidth + spaceBetweenLasers));
 var numLasers = lasersPerSide * 2;
+
+var headlights = [],
+    taillights = [];
+
+var ambientLight,
+    directionalLight,
+    pointLight;
+
+    
+// Nitrus
+var nitrusEffects = [];
 
 // Portal
 var portalGeometry, portalMaterial, portalMesh;
 
+// Portal 2
+var portalGeometry2, portalMaterial2, portalMesh2;
+
 async function init() {
     return new Promise((resolve, reject) => {
         try {
-            ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+            
             geometry = new THREE.BoxGeometry(1, 1, 1);
             listener = new THREE.AudioListener();
             audio = new THREE.Audio(listener);
             loader = new GLTFLoader();
-            pointLight = new THREE.PointLight(0xffffff, 1, 100);
             renderer = new THREE.WebGLRenderer({ antialias: true });
             roadMaterial = new THREE.MeshStandardMaterial({ color: 0xfffff, transparent: true, opacity: 0.1 });
             scene = new THREE.Scene();
@@ -84,6 +98,21 @@ async function init() {
             renderer.setClearColor(0x000000);
             renderer.useLegacyLights = true;
             document.body.appendChild(renderer.domElement);
+           
+            // Create and add ambient light with increased intensity
+            ambientLight = new THREE.AmbientLight(0xffffff, 1.0);  // Increase intensity
+            scene.add(ambientLight);
+
+            // Add a directional light for better illumination
+            directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(0, 10, 10).normalize();
+            scene.add(directionalLight);
+
+            // Add a point light for additional illumination
+            pointLight = new THREE.PointLight(0xffffff, 1, 50);
+            pointLight.position.set(0, 5, 5);
+            scene.add(pointLight);          
+            
 
             for (let i = 0; i < numLasers; i++) {
                 var laserPosition = new THREE.Vector3();
@@ -136,7 +165,6 @@ async function init() {
             camera.add(listener);
 
             scene.add(ambientLight);
-            scene.add(pointLight);
             scene.add(laserGroup);
             scene.add(road);
             scene.add(stars);
@@ -166,7 +194,7 @@ async function init() {
                 transparent: true
             });
             portalMesh = new THREE.Mesh(portalGeometry, portalMaterial);
-            portalMesh.position.set(0, 2, -roadLength / 2 - 15);
+            portalMesh.position.set(0, 2, 3*(-roadLength / 2) - 15);
             portalMesh.rotation.y = Math.PI;  // Rotate to face the car
             scene.add(portalMesh);
 
@@ -174,6 +202,40 @@ async function init() {
             const portalLight = new THREE.PointLight(0x00ff00, 1, 20);
             portalLight.position.set(0, 3, -roadLength / 2 + 5);
             scene.add(portalLight);
+            
+            // Portal 2
+            portalGeometry2 = new THREE.RingGeometry(2, 3, 64);
+            const portalVertexShader2 = `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `;
+            const portalFragmentShader2 = `
+                uniform float time;
+                varying vec2 vUv;
+                void main() {
+                    float color = 0.5 + 0.5 * sin(time + vUv.x * 10.0);
+                    gl_FragColor = vec4(color, 1.0 - color, color, 1.0);
+                }
+            `;
+            portalMaterial2 = new THREE.ShaderMaterial({
+                uniforms: { time: { value: 0.0 } },
+                vertexShader: portalVertexShader2,
+                fragmentShader: portalFragmentShader2,
+                side: THREE.DoubleSide,
+                transparent: true
+            });
+            portalMesh2 = new THREE.Mesh(portalGeometry2, portalMaterial2);
+            portalMesh2.position.set(0, 2, -roadLength / 2 - 15);
+            portalMesh2.rotation.y = Math.PI;  // Rotate to face the car
+            scene.add(portalMesh2);
+
+            // Add light to enhance portal glow effect
+            const portalLight2 = new THREE.PointLight(0x00ff00, 1, 20);
+            portalLight2.position.set(0, 3, -roadLength / 2 - 15);
+            scene.add(portalLight2);
             
             loader.load(
                 "car.glb",
@@ -184,6 +246,61 @@ async function init() {
                     car.position.z = road.position.z - roadLength / 2;
                     carForward.multiplyScalar(-1);
                     carVelocity.copy(carForward).multiplyScalar(carSpeed);
+                    
+                    // Initialize nitrous effect
+                    const nitrusVertexShader = `
+                        varying vec2 vUv;
+                        void main() {
+                            vUv = uv;
+                            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                        }
+                    `;
+                    const nitrusFragmentShader = `
+                        uniform float time;
+                        varying vec2 vUv;
+                        void main() {
+                            float color = 0.5 + 0.5 * sin(time + vUv.y * 10.0);
+                            gl_FragColor = vec4(0.0, color, 1.0 - color, 1.0);
+                        }
+                    `;
+                    const nitrusMaterial = new THREE.ShaderMaterial({
+                        uniforms: { time: { value: 0.0 } },
+                        vertexShader: nitrusVertexShader,
+                        fragmentShader: nitrusFragmentShader,
+                        side: THREE.DoubleSide,
+                        transparent: true
+                    });
+
+                    for (let i = 0; i < 3; i++) {
+                        const scale = 0.5 + i * 0.5;
+                        const nitrusGeometry = new THREE.ConeGeometry(0.75 * scale, 2 * scale, 32);
+                        const nitrusEffect = new THREE.Mesh(nitrusGeometry, nitrusMaterial);
+                        nitrusEffect.rotation.x = Math.PI; // Point it backwards
+                        nitrusEffect.position.set(0, -0.5 - i, -2 - i); // Position at the back of the car
+                        nitrusEffect.visible = false; // Start hidden
+                        car.add(nitrusEffect);
+                        nitrusEffects.push(nitrusEffect);
+                    }
+                    
+                    // Add headlights
+                    for (let i = -1; i <= 1; i += 2) {
+                        const headlight = new THREE.SpotLight(0xffffff, 1);
+                        headlight.position.set(i * 0.5, 0.5, 1);
+                        headlight.angle = Math.PI / 6;
+                        headlight.penumbra = 0.2;
+                        headlight.castShadow = true;
+                        car.add(headlight);
+                        headlights.push(headlight);
+                    }
+
+                    // Add taillights
+                    for (let i = -1; i <= 1; i += 2) {
+                        const taillight = new THREE.PointLight(0xff0000, 1, 10);
+                        taillight.position.set(i * 0.5, 0.5, -1.5);
+                        car.add(taillight);
+                        taillights.push(taillight);
+                    }
+                    
                     resolve();
                 },
                 function (xhr) {
@@ -197,7 +314,6 @@ async function init() {
 
             camera.position.set(0, 0, 5);
             camera.position.y = 5;
-            pointLight.position.set(0, 20, 0);
             road.position.y = 0.01;
             road.rotation.x = -Math.PI / 2;
         } catch (error) {
@@ -252,19 +368,37 @@ function animate() {
     }
     
     portalMesh.rotation.z += 0.01;
+    portalMesh2.rotation.z += 0.01;
     portalMaterial.uniforms.time.value += timeDelta;
+    portalMaterial2.uniforms.time.value += timeDelta;
 
     car.getWorldDirection(carForward);
     carVelocity.copy(carForward).multiplyScalar(carSpeed);
     carVelocity.z = -carSpeed;
 
-    if (car.position.z < road.position.z - roadLength / 2) {
-        console.log('yo');
+    // Start and End
+    if (car.position.z < road.position.z - roadLength / 2 && stayOnRoad) {
+        stayOnRoad = false;
+        console.log("Begin");
         car.position.z = road.position.z + roadLength / 2;
         carForward.multiplyScalar(-1);
         carVelocity.copy(carForward).multiplyScalar(carSpeed);
-    } else if (car.position.z > (road.position.z + roadLength / 2)*2) {
-        console.log('REM');
+        
+    // Portal 1 - Engage Nitrus
+    } else if (car.position.z < road.position.z - roadLength / 2 && !nitrus) {
+        nitrus = true;
+        nitrusEffects.forEach(effect => effect.visible = true);
+        console.log("Engage Nitrus");
+        
+    } else if (car.position.z < (road.position.z - roadLength /2)*3 - 15 && !stayOnRoad) {
+        console.log("Return");
+        car.position.z = road.position.z + roadLength / 2;
+        carForward.multiplyScalar(-1);
+        carVelocity.copy(carForward).multiplyScalar(carSpeed);       
+        
+    // In Between
+    } else if (car.position.z > road.position.z + roadLength / 2) {
+        console.log("idk tbh");
         carForward.multiplyScalar(-1);
         carVelocity.copy(carForward).multiplyScalar(carSpeed);
     }
