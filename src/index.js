@@ -44,7 +44,7 @@ var maxLaserHeight = 50;
 var minFrequency = 0;
 var roadLength = 300;
 var roadWidth = 10;
-var songName = 'How I Should of Been.wav';
+var songName = 'Day 134 - REM.wav';
 var spaceBetweenLasers = 5;
 var speedFactor = 100;
 var traveledDistance = 0;
@@ -53,6 +53,9 @@ var turnProbability = 0.1;
 
 var lasersPerSide = Math.floor(roadLength / (laserWidth + spaceBetweenLasers));
 var numLasers = lasersPerSide * 2;
+
+// Portal
+var portalGeometry, portalMaterial, portalMesh;
 
 async function init() {
     return new Promise((resolve, reject) => {
@@ -137,7 +140,41 @@ async function init() {
             scene.add(laserGroup);
             scene.add(road);
             scene.add(stars);
+            
+            // Portal
+            portalGeometry = new THREE.RingGeometry(2, 3, 64);
+            const portalVertexShader = `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `;
+            const portalFragmentShader = `
+                uniform float time;
+                varying vec2 vUv;
+                void main() {
+                    float color = 0.5 + 0.5 * sin(time + vUv.x * 10.0);
+                    gl_FragColor = vec4(color, 1.0 - color, color, 1.0);
+                }
+            `;
+            portalMaterial = new THREE.ShaderMaterial({
+                uniforms: { time: { value: 0.0 } },
+                vertexShader: portalVertexShader,
+                fragmentShader: portalFragmentShader,
+                side: THREE.DoubleSide,
+                transparent: true
+            });
+            portalMesh = new THREE.Mesh(portalGeometry, portalMaterial);
+            portalMesh.position.set(0, 2, -roadLength / 2 - 15);
+            portalMesh.rotation.y = Math.PI;  // Rotate to face the car
+            scene.add(portalMesh);
 
+            // Add light to enhance portal glow effect
+            const portalLight = new THREE.PointLight(0x00ff00, 1, 20);
+            portalLight.position.set(0, 3, -roadLength / 2 + 5);
+            scene.add(portalLight);
+            
             loader.load(
                 "car.glb",
                 function (gltf) {
@@ -213,17 +250,21 @@ function animate() {
         );
         star.material.color.copy(color);
     }
+    
+    portalMesh.rotation.z += 0.01;
+    portalMaterial.uniforms.time.value += timeDelta;
 
     car.getWorldDirection(carForward);
     carVelocity.copy(carForward).multiplyScalar(carSpeed);
     carVelocity.z = -carSpeed;
 
     if (car.position.z < road.position.z - roadLength / 2) {
+        console.log('yo');
         car.position.z = road.position.z + roadLength / 2;
         carForward.multiplyScalar(-1);
         carVelocity.copy(carForward).multiplyScalar(carSpeed);
-    } else if (car.position.z > road.position.z + roadLength / 2) {
-        car.position.z = road.position.z - roadLength / 2;
+    } else if (car.position.z > (road.position.z + roadLength / 2)*2) {
+        console.log('REM');
         carForward.multiplyScalar(-1);
         carVelocity.copy(carForward).multiplyScalar(carSpeed);
     }
