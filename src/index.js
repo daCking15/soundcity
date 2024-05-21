@@ -33,26 +33,26 @@ var geometry;
 var groundRaycaster = new THREE.Raycaster();
 var laserColors = [];
 var laserGroup = new THREE.Object3D();
-var laserLength = 10000;
+var laserLength = 1000;
 var laserOffset = 20;
 var lasers = [];
-var laserWidth = 0.1;
+var laserWidth = 0.5;
 var maxFrequency = 10000;
 var maxLaserHeight = 50;
 var minFrequency = 0;
-var roadLength = 300;
-var roadWidth = 10;
-var songName = 'Day 134 - REM.wav';
-var spaceBetweenLasers = 5;
+var roadLength = 265;
+var roadWidth = 25;
+var songName = 'Animation.wav';
+var spaceBetweenLasers = 15;
 var speedFactor = 100;
 var traveledDistance = 0;
-var turnAmount = Math.PI / 4;
 var turnProbability = 0.1;
+var trackLength = roadLength * 2;
 
 var stayOnRoad = true;
 var nitrus = false;
 
-var lasersPerSide = Math.floor(roadLength / (laserWidth + spaceBetweenLasers));
+var lasersPerSide = Math.floor(trackLength / (laserWidth + spaceBetweenLasers));
 var numLasers = lasersPerSide * 2;
 
 var headlights = [],
@@ -62,7 +62,8 @@ var ambientLight,
     directionalLight,
     pointLight;
 
-    
+var start = true;
+
 // Nitrus
 var nitrusEffects = [];
 
@@ -75,13 +76,11 @@ var portalGeometry2, portalMaterial2, portalMesh2;
 async function init() {
     return new Promise((resolve, reject) => {
         try {
-            
             geometry = new THREE.BoxGeometry(1, 1, 1);
             listener = new THREE.AudioListener();
             audio = new THREE.Audio(listener);
             loader = new GLTFLoader();
             renderer = new THREE.WebGLRenderer({ antialias: true });
-            roadMaterial = new THREE.MeshStandardMaterial({ color: 0xfffff, transparent: true, opacity: 0.1 });
             scene = new THREE.Scene();
             stars = new THREE.Group();
 
@@ -89,7 +88,7 @@ async function init() {
             roadGeometry = new THREE.PlaneGeometry(roadWidth, roadLength);
 
             dataArray = new Uint8Array(analyser.frequencyBinCount);
-            road = new THREE.Mesh(roadGeometry, roadMaterial);
+            road = new THREE.Mesh(roadGeometry, createTrippyMaterial());
 
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
             canvasContainer = document.getElementById('canvasContainer');
@@ -98,9 +97,9 @@ async function init() {
             renderer.setClearColor(0x000000);
             renderer.useLegacyLights = true;
             document.body.appendChild(renderer.domElement);
-           
+
             // Create and add ambient light with increased intensity
-            ambientLight = new THREE.AmbientLight(0xffffff, 1.0);  // Increase intensity
+            ambientLight = new THREE.AmbientLight(0xffffff, 1.0); // Increase intensity
             scene.add(ambientLight);
 
             // Add a directional light for better illumination
@@ -111,8 +110,7 @@ async function init() {
             // Add a point light for additional illumination
             pointLight = new THREE.PointLight(0xffffff, 1, 50);
             pointLight.position.set(0, 5, 5);
-            scene.add(pointLight);          
-            
+            scene.add(pointLight);
 
             for (let i = 0; i < numLasers; i++) {
                 var laserPosition = new THREE.Vector3();
@@ -125,13 +123,12 @@ async function init() {
                 var laser = new THREE.Mesh(geometry, laserMaterial);
                 var halfHeight = laserHeight / 2;
                 laserPosition.x = side * (roadWidth / 2 + laserOffset);
-                laserPosition.z = ((i % lasersPerSide) * (laserWidth + spaceBetweenLasers)) - roadLength / 2;
+                laserPosition.z = ((i % lasersPerSide) * (laserWidth + spaceBetweenLasers)) - trackLength / 2;
                 laser.position.copy(laserPosition);
                 laser.position.y = laserHeight / 2;
                 var newPosition = new THREE.Vector3(laser.position.x, laser.position.y - halfHeight, laser.position.z);
                 laser.position.copy(newPosition);
 
-                
                 laser.scale.set(laserWidth, laserHeight, laserWidth);
                 laser.rotateX(rotationAngle);
 
@@ -168,7 +165,7 @@ async function init() {
             scene.add(laserGroup);
             scene.add(road);
             scene.add(stars);
-            
+
             // Portal
             portalGeometry = new THREE.RingGeometry(2, 3, 64);
             const portalVertexShader = `
@@ -194,15 +191,15 @@ async function init() {
                 transparent: true
             });
             portalMesh = new THREE.Mesh(portalGeometry, portalMaterial);
-            portalMesh.position.set(0, 2, 3*(-roadLength / 2) - 15);
-            portalMesh.rotation.y = Math.PI;  // Rotate to face the car
+            portalMesh.position.set(0, 2, 3 * (-roadLength / 2) - 15);
+            portalMesh.rotation.y = Math.PI; // Rotate to face the car
             scene.add(portalMesh);
 
             // Add light to enhance portal glow effect
             const portalLight = new THREE.PointLight(0x00ff00, 1, 20);
             portalLight.position.set(0, 3, -roadLength / 2 + 5);
             scene.add(portalLight);
-            
+
             // Portal 2
             portalGeometry2 = new THREE.RingGeometry(2, 3, 64);
             const portalVertexShader2 = `
@@ -229,14 +226,14 @@ async function init() {
             });
             portalMesh2 = new THREE.Mesh(portalGeometry2, portalMaterial2);
             portalMesh2.position.set(0, 2, -roadLength / 2 - 15);
-            portalMesh2.rotation.y = Math.PI;  // Rotate to face the car
+            portalMesh2.rotation.y = Math.PI; // Rotate to face the car
             scene.add(portalMesh2);
 
             // Add light to enhance portal glow effect
             const portalLight2 = new THREE.PointLight(0x00ff00, 1, 20);
             portalLight2.position.set(0, 3, -roadLength / 2 - 15);
             scene.add(portalLight2);
-            
+
             loader.load(
                 "car.glb",
                 function (gltf) {
@@ -246,7 +243,7 @@ async function init() {
                     car.position.z = road.position.z - roadLength / 2;
                     carForward.multiplyScalar(-1);
                     carVelocity.copy(carForward).multiplyScalar(carSpeed);
-                    
+
                     // Initialize nitrous effect
                     const nitrusVertexShader = `
                         varying vec2 vUv;
@@ -281,7 +278,7 @@ async function init() {
                         car.add(nitrusEffect);
                         nitrusEffects.push(nitrusEffect);
                     }
-                    
+
                     // Add headlights
                     for (let i = -1; i <= 1; i += 2) {
                         const headlight = new THREE.SpotLight(0xffffff, 1);
@@ -300,7 +297,7 @@ async function init() {
                         car.add(taillight);
                         taillights.push(taillight);
                     }
-                    
+
                     resolve();
                 },
                 function (xhr) {
@@ -320,6 +317,37 @@ async function init() {
             console.error("Initialization error:", error);
             reject(error);
         }
+    });
+}
+
+function createTrippyMaterial() {
+    const vertexShader = `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `;
+
+    const fragmentShader = `
+        uniform float time;
+        varying vec2 vUv;
+        void main() {
+            vec2 uv = vUv;
+            uv.y += time * 0.1;
+            vec3 color = vec3(0.5 + 0.5 * sin(time + uv.x * 10.0), 0.5 + 0.5 * sin(time + uv.y * 10.0), 0.5 + 0.5 * sin(time + uv.x * 5.0 + uv.y * 5.0));
+            gl_FragColor = vec4(color, 1.0);
+        }
+    `;
+
+    return new THREE.ShaderMaterial({
+        uniforms: {
+            time: { value: 0.0 }
+        },
+        vertexShader: vertexShader,
+        fragmentShader: fragmentShader,
+        side: THREE.DoubleSide,
+        transparent: true
     });
 }
 
@@ -343,7 +371,8 @@ function animate() {
         const rotationX = normalizedFrequency * Math.PI;
 
         if (rotationX == 0) {
-            lasers[i].visible = false;
+            //lasers[i].visible = false;
+            lasers[i].rotation.x = rotationX;
         } else {
             lasers[i].visible = true;
             lasers[i].rotation.x = rotationX;
@@ -366,7 +395,7 @@ function animate() {
         );
         star.material.color.copy(color);
     }
-    
+
     portalMesh.rotation.z += 0.01;
     portalMesh2.rotation.z += 0.01;
     portalMaterial.uniforms.time.value += timeDelta;
@@ -378,25 +407,32 @@ function animate() {
 
     // Start and End
     if (car.position.z < road.position.z - roadLength / 2 && stayOnRoad) {
+        if (start) {
+            laserGroup.visible = false; 
+        } else {
+            laserGroup.visible = true;
+        }
+        start = !start;
         stayOnRoad = false;
         console.log("Begin");
         car.position.z = road.position.z + roadLength / 2;
         carForward.multiplyScalar(-1);
         carVelocity.copy(carForward).multiplyScalar(carSpeed);
-        
-    // Portal 1 - Engage Nitrus
+
+        // Portal 1 - Engage Nitrus
     } else if (car.position.z < road.position.z - roadLength / 2 && !nitrus) {
+        //laserGroup.visible = false;
         nitrus = true;
         nitrusEffects.forEach(effect => effect.visible = true);
         console.log("Engage Nitrus");
-        
-    } else if (car.position.z < (road.position.z - roadLength /2)*3 - 15 && !stayOnRoad) {
+
+    } else if (car.position.z < (road.position.z - roadLength / 2) * 3 - 15 && !stayOnRoad) {
         console.log("Return");
         car.position.z = road.position.z + roadLength / 2;
         carForward.multiplyScalar(-1);
-        carVelocity.copy(carForward).multiplyScalar(carSpeed);       
-        
-    // In Between
+        carVelocity.copy(carForward).multiplyScalar(carSpeed);
+
+        // In Between
     } else if (car.position.z > road.position.z + roadLength / 2) {
         console.log("idk tbh");
         carForward.multiplyScalar(-1);
@@ -418,6 +454,8 @@ function animate() {
     const cameraLookUpOffset = 5;
     cameraLookAt.y += cameraLookUpOffset;
     camera.lookAt(cameraLookAt);
+
+    road.material.uniforms.time.value += timeDelta;
 
     renderer.render(scene, camera);
 }
