@@ -5,10 +5,9 @@ import { GUI } from 'https://threejsfundamentals.org/threejs/../3rdparty/dat.gui
 
 var analyser,
     audio,
-    backButton,
     camera,
     canvasContainer,
-    car,
+    target,
     dataArray,
     frequency,
     ground,
@@ -24,9 +23,9 @@ var analyser,
 
 var cameraOffset = new THREE.Vector3();
 var cameraLookAt = new THREE.Vector3();
-var carForward = new THREE.Vector3();
-var carSpeed = 25;
-var carVelocity = new THREE.Vector3();
+var targetForward = new THREE.Vector3();
+var targetSpeed = 25;
+var targetVelocity = new THREE.Vector3();
 var clock = new THREE.Clock();
 var currentSong = '';
 var geometry;
@@ -40,9 +39,9 @@ var laserWidth = 0.5;
 var maxFrequency = 10000;
 var maxLaserHeight = 50;
 var minFrequency = 0;
-var roadLength = 265;
+var roadLength = 255;
 var roadWidth = 25;
-var songName = 'Animation.wav';
+var songName = 'Sun Goes Down.wav';
 var spaceBetweenLasers = 15;
 var speedFactor = 100;
 var traveledDistance = 0;
@@ -55,14 +54,15 @@ var nitrus = false;
 var lasersPerSide = Math.floor(trackLength / (laserWidth + spaceBetweenLasers));
 var numLasers = lasersPerSide * 2;
 
-var headlights = [],
-    taillights = [];
-
 var ambientLight,
     directionalLight,
     pointLight;
 
+var over = 1;
+
 var start = true;
+
+var numStars = 1000;
 
 // Nitrus
 var nitrusEffects = [];
@@ -89,6 +89,7 @@ async function init() {
 
             dataArray = new Uint8Array(analyser.frequencyBinCount);
             road = new THREE.Mesh(roadGeometry, createTrippyMaterial());
+            road.visible = false;
 
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
             canvasContainer = document.getElementById('canvasContainer');
@@ -137,8 +138,10 @@ async function init() {
 
                 laserGroup.add(laser);
             }
+            
+            laserGroup.visible = false;
 
-            for (let i = 0; i < 1000; i++) {
+            for (let i = 0; i < numStars; i++) {
                 let starGeometry = new THREE.SphereGeometry(1, 8, 8);
                 let starMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
 
@@ -151,6 +154,8 @@ async function init() {
                 } else {
                     star.position.y = Math.random() * 1000;
                 }
+                star.position.y *= over;
+                over *= -1;
 
                 stars.add(star);
             }
@@ -192,7 +197,8 @@ async function init() {
             });
             portalMesh = new THREE.Mesh(portalGeometry, portalMaterial);
             portalMesh.position.set(0, 2, 3 * (-roadLength / 2) - 15);
-            portalMesh.rotation.y = Math.PI; // Rotate to face the car
+            portalMesh.rotation.y = Math.PI; // Rotate to face the target
+            //portalMesh.visible = false;
             scene.add(portalMesh);
 
             // Add light to enhance portal glow effect
@@ -226,93 +232,23 @@ async function init() {
             });
             portalMesh2 = new THREE.Mesh(portalGeometry2, portalMaterial2);
             portalMesh2.position.set(0, 2, -roadLength / 2 - 15);
-            portalMesh2.rotation.y = Math.PI; // Rotate to face the car
+            portalMesh2.rotation.y = Math.PI; // Rotate to face the target
             scene.add(portalMesh2);
+            portalMesh2.visible = false;
 
             // Add light to enhance portal glow effect
             const portalLight2 = new THREE.PointLight(0x00ff00, 1, 20);
             portalLight2.position.set(0, 3, -roadLength / 2 - 15);
             scene.add(portalLight2);
 
-            loader.load(
-                "car.glb",
-                function (gltf) {
-                    car = gltf.scene;
-                    car.children[0].rotation.z = Math.PI;
-                    scene.add(car);
-                    car.position.z = road.position.z - roadLength / 2;
-                    carForward.multiplyScalar(-1);
-                    carVelocity.copy(carForward).multiplyScalar(carSpeed);
+            // Initialize the target
+            target = new THREE.Object3D();
+            scene.add(target);
+            target.position.z = road.position.z - roadLength / 2;
+            targetForward.multiplyScalar(-1);
+            targetVelocity.copy(targetForward).multiplyScalar(targetSpeed);
 
-                    // Initialize nitrous effect
-                    const nitrusVertexShader = `
-                        varying vec2 vUv;
-                        void main() {
-                            vUv = uv;
-                            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                        }
-                    `;
-                    const nitrusFragmentShader = `
-                        uniform float time;
-                        varying vec2 vUv;
-                        void main() {
-                            float color = 0.5 + 0.5 * sin(time + vUv.y * 10.0);
-                            gl_FragColor = vec4(0.0, color, 1.0 - color, 1.0);
-                        }
-                    `;
-                    const nitrusMaterial = new THREE.ShaderMaterial({
-                        uniforms: { time: { value: 0.0 } },
-                        vertexShader: nitrusVertexShader,
-                        fragmentShader: nitrusFragmentShader,
-                        side: THREE.DoubleSide,
-                        transparent: true
-                    });
-
-                    for (let i = 0; i < 3; i++) {
-                        const scale = 0.5 + i * 0.5;
-                        const nitrusGeometry = new THREE.ConeGeometry(0.75 * scale, 2 * scale, 32);
-                        const nitrusEffect = new THREE.Mesh(nitrusGeometry, nitrusMaterial);
-                        nitrusEffect.rotation.x = Math.PI; // Point it backwards
-                        nitrusEffect.position.set(0, -0.5 - i, -2 - i); // Position at the back of the car
-                        nitrusEffect.visible = false; // Start hidden
-                        car.add(nitrusEffect);
-                        nitrusEffects.push(nitrusEffect);
-                    }
-
-                    // Add headlights
-                    for (let i = -1; i <= 1; i += 2) {
-                        const headlight = new THREE.SpotLight(0xffffff, 1);
-                        headlight.position.set(i * 0.5, 0.5, 1);
-                        headlight.angle = Math.PI / 6;
-                        headlight.penumbra = 0.2;
-                        headlight.castShadow = true;
-                        car.add(headlight);
-                        headlights.push(headlight);
-                    }
-
-                    // Add taillights
-                    for (let i = -1; i <= 1; i += 2) {
-                        const taillight = new THREE.PointLight(0xff0000, 1, 10);
-                        taillight.position.set(i * 0.5, 0.5, -1.5);
-                        car.add(taillight);
-                        taillights.push(taillight);
-                    }
-
-                    resolve();
-                },
-                function (xhr) {
-                    console.log((xhr.loaded / xhr.total * 100) + '% loaded');
-                },
-                function (error) {
-                    console.log('An error happened', error);
-                    reject(error);
-                }
-            );
-
-            camera.position.set(0, 0, 5);
-            camera.position.y = 5;
-            road.position.y = 0.01;
-            road.rotation.x = -Math.PI / 2;
+            resolve();
         } catch (error) {
             console.error("Initialization error:", error);
             reject(error);
@@ -356,10 +292,9 @@ function animate() {
     var displacement;
 
     requestAnimationFrame(animate);
-    traveledDistance += carVelocity.length() * clock.getDelta();
+    traveledDistance += targetVelocity.length() * clock.getDelta();
     if (traveledDistance >= 275) {
         traveledDistance = 0;
-        laserGroup.visible = !laserGroup.visible;
     }
     dataArray = analyser.getFrequencyData();
     frequency = analyser.getAverageFrequency();
@@ -371,7 +306,7 @@ function animate() {
         const rotationX = normalizedFrequency * Math.PI;
 
         if (rotationX == 0) {
-            //lasers[i].visible = false;
+            laserGroup.visible = true;
             lasers[i].rotation.x = rotationX;
         } else {
             lasers[i].visible = true;
@@ -401,56 +336,56 @@ function animate() {
     portalMaterial.uniforms.time.value += timeDelta;
     portalMaterial2.uniforms.time.value += timeDelta;
 
-    car.getWorldDirection(carForward);
-    carVelocity.copy(carForward).multiplyScalar(carSpeed);
-    carVelocity.z = -carSpeed;
+    target.getWorldDirection(targetForward);
+    targetVelocity.copy(targetForward).multiplyScalar(targetSpeed);
+    targetVelocity.z = -targetSpeed;
 
     // Start and End
-    if (car.position.z < road.position.z - roadLength / 2 && stayOnRoad) {
+    if (target.position.z < road.position.z - roadLength / 2 && stayOnRoad) {
         if (start) {
-            laserGroup.visible = false; 
+            //laserGroup.visible = false; 
         } else {
             laserGroup.visible = true;
         }
         start = !start;
         stayOnRoad = false;
         console.log("Begin");
-        car.position.z = road.position.z + roadLength / 2;
-        carForward.multiplyScalar(-1);
-        carVelocity.copy(carForward).multiplyScalar(carSpeed);
+        target.position.z = road.position.z + roadLength / 2;
+        targetForward.multiplyScalar(-1);
+        targetVelocity.copy(targetForward).multiplyScalar(targetSpeed);
 
         // Portal 1 - Engage Nitrus
-    } else if (car.position.z < road.position.z - roadLength / 2 && !nitrus) {
+    } else if (target.position.z < road.position.z - roadLength / 2 && !nitrus) {
         //laserGroup.visible = false;
         nitrus = true;
         nitrusEffects.forEach(effect => effect.visible = true);
         console.log("Engage Nitrus");
 
-    } else if (car.position.z < (road.position.z - roadLength / 2) * 3 - 15 && !stayOnRoad) {
+    } else if (target.position.z < (road.position.z - roadLength / 2) * 3 - 15 && !stayOnRoad) {
         console.log("Return");
-        car.position.z = road.position.z + roadLength / 2;
-        carForward.multiplyScalar(-1);
-        carVelocity.copy(carForward).multiplyScalar(carSpeed);
+        target.position.z = road.position.z + roadLength / 2;
+        targetForward.multiplyScalar(-1);
+        targetVelocity.copy(targetForward).multiplyScalar(targetSpeed);
 
         // In Between
-    } else if (car.position.z > road.position.z + roadLength / 2) {
+    } else if (target.position.z > road.position.z + roadLength / 2) {
         console.log("idk tbh");
-        carForward.multiplyScalar(-1);
-        carVelocity.copy(carForward).multiplyScalar(carSpeed);
+        targetForward.multiplyScalar(-1);
+        targetVelocity.copy(targetForward).multiplyScalar(targetSpeed);
     }
 
-    displacement = carVelocity.clone().multiplyScalar(timeDelta);
-    car.position.add(displacement);
-    car.position.x = road.position.x;
-    car.position.y = Math.max(car.position.y, 1);
-    car.getWorldDirection(carForward);
-    carForward.negate();
-    cameraOffset.copy(carForward).multiplyScalar(-10);
-    camera.position.copy(car.position).add(cameraOffset);
-    cameraLookAt.copy(car.position).add(carForward);
+    displacement = targetVelocity.clone().multiplyScalar(timeDelta);
+    target.position.add(displacement);
+    target.position.x = road.position.x;
+    target.position.y = Math.max(target.position.y, 1);
+    target.getWorldDirection(targetForward);
+    targetForward.negate();
+    cameraOffset.copy(targetForward).multiplyScalar(-10);
+    camera.position.copy(target.position).add(cameraOffset);
+    cameraLookAt.copy(target.position).add(targetForward);
     camera.position.z -= 1.5;
     camera.position.y += 1;
-    camera.rotation.y = car.rotation.y + Math.PI;
+    camera.rotation.y = target.rotation.y + Math.PI;
     const cameraLookUpOffset = 5;
     cameraLookAt.y += cameraLookUpOffset;
     camera.lookAt(cameraLookAt);
@@ -486,22 +421,10 @@ async function destroyScene() {
     renderer.dispose();
 }
 
-function goBackToMainScreen() {
-    destroyScene().then(() => {
-        document.getElementById('canvasContainer').style.display = 'none';
-        document.getElementById('songButtons').style.display = '';
-        document.getElementById('backButton').style.display = 'none';
-        if (audio.isPlaying) {
-            audio.stop();
-        }
-    });
-}
-
 function hideElement(id) { document.getElementById(id).style.display = 'none'; }
 
 function initHomeScreen() {
     play = document.getElementById('play');
-    backButton = document.getElementById('backButton');
 
     play.addEventListener('click', function () {
         init().then(() => {
@@ -512,7 +435,6 @@ function initHomeScreen() {
             console.error("Error during initialization:", error);
         });
     });
-    backButton.addEventListener('click', goBackToMainScreen);
 }
 
 function onWindowResize() {
@@ -535,7 +457,6 @@ function playSong(filename) {
         console.error("Error loading audio file:", error);
     });
     document.getElementById('songButtons').style.display = 'none';
-    document.getElementById('backButton').style.display = 'block';
 }
 
 function showElement(id) { document.getElementById(id).style.display = 'block'; }
